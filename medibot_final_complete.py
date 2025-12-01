@@ -1,5 +1,7 @@
 ```python
-# medibot_final_complete.py
+# medibot_final_secure.py
+import os
+from dotenv import load_dotenv
 import sqlite3
 from datetime import datetime, timedelta
 import requests
@@ -7,15 +9,28 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext, MessageHandler, Filters, ConversationHandler
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# ======== إعدادات ========
-BOT_TOKEN = "8527187876:AAFF-cRFAvT5Ek5LFIjIl0EoWDVRji6RYrc"
-AZURE_REGION = "qatarcentral"
+# ======== تحميل المتغيرات السرية من .env ========
+load_dotenv()  # يقرأ القيم من ملف .env
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+AZURE_KEY = os.getenv("AZURE_KEY")
+AZURE_REGION = os.getenv("AZURE_REGION")
 AZURE_ENDPOINT = f"https://{AZURE_REGION}.api.cognitive.microsoft.com/"
 
+# ======== روابط الدفع حسب الدولة ========
 PAY_LINKS = {
-    "EG": {"personal": "https://paytabs.com/eg-personal", "family": "https://paytabs.com/eg-family"},
-    "SA": {"personal": "https://paytabs.com/sa-personal", "family": "https://paytabs.com/sa-family"},
-    "INTL": {"personal": "https://paytabs.com/int-personal", "family": "https://paytabs.com/int-family"}
+    "EG": {  # مصر
+        "personal": "https://secure-egypt.paytabs.com/payment/link/140410/5615069",  # 97 جنيه
+        "family": "https://secure-egypt.paytabs.com/payment/link/140410/5594819"     # 190 جنيه
+    },
+    "SA": {  # السعودية والخليج
+        "personal": "https://paytabs.com/sa-personal",
+        "family": "https://paytabs.com/sa-family"
+    },
+    "INTL": {  # باقي الدول
+        "personal": "https://paytabs.com/int-personal",
+        "family": "https://paytabs.com/int-family"
+    }
 }
 
 DB_PATH = "medibot_final_complete.db"
@@ -165,13 +180,15 @@ def plan_callback(update: Update, context: CallbackContext):
     if query.data == "plan_personal":
         c.execute("UPDATE users SET plan_type='شخصي' WHERE tg_id=?", (tg_id,))
         conn.commit()
-        link = pay_links.get("personal", PAY_LINKS['INTL']['personal'])
-        query.edit_message_text(f"تم اختيار الخطة الشخصية ✅\nيرجى الدفع لتفعيل البوت: {link}")
+        link = pay_links.get("personal")
+        price = "97 جنيه" if context.user_data.get('detected_country')=="EG" else ""
+        query.edit_message_text(f"تم اختيار الخطة الشخصية ✅\nيرجى الدفع لتفعيل البوت: {link} {price}")
     elif query.data == "plan_family":
         c.execute("UPDATE users SET plan_type='عائلي' WHERE tg_id=?", (tg_id,))
         conn.commit()
-        link = pay_links.get("family", PAY_LINKS['INTL']['family'])
-        query.edit_message_text(f"تم اختيار الخطة العائلية ✅\nيرجى الدفع لتفعيل البوت: {link}")
+        link = pay_links.get("family")
+        price = "190 جنيه" if context.user_data.get('detected_country')=="EG" else ""
+        query.edit_message_text(f"تم اختيار الخطة العائلية ✅\nيرجى الدفع لتفعيل البوت: {link} {price}")
 
 def cancel(update: Update, context: CallbackContext):
     update.message.reply_text("تم إلغاء العملية.")
@@ -198,4 +215,3 @@ dp.add_handler(conv_handler)
 updater.start_polling()
 updater.idle()
 ```
-
