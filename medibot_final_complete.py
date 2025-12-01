@@ -9,7 +9,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 # ======== إعدادات ========
 BOT_TOKEN = "8527187876:AAFF-cRFAvT5Ek5LFIjIl0EoWDVRji6RYrc"
-AZURE_KEY = "55BWD9eTLjS9tMsHPQlYNT01l3ifJHFcFX4ga24iJX0TxuMc31myJQQJ99BKACFcvJRXJ3w3AAAYACOGKyxp"
 AZURE_REGION = "qatarcentral"
 AZURE_ENDPOINT = f"https://{AZURE_REGION}.api.cognitive.microsoft.com/"
 
@@ -199,3 +198,4 @@ dp.add_handler(conv_handler)
 updater.start_polling()
 updater.idle()
 ```
+
