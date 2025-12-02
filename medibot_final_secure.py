@@ -1,123 +1,198 @@
+# medibot_final_full.py - Full Telegram Bot Flow for Render Webhook Deployment
 
-# medibot_final_secure.py - Optimized for Render Webhook Deployment
-import telebot
 import os
-from dotenv import load_dotenv
+import telebot
+from telebot import types
 from flask import Flask, request
+from dotenv import load_dotenv
 
-# 1. Load environment variables
-load_dotenv()
+# -------------------------------
+# Load Environment Variables
+# -------------------------------
+load_dotenv()  # Only needed for local testing; Render reads from env vars automatically
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-# Render provides the port automatically
-PORT = int(os.environ.get('PORT', 5000)) 
-# Your Render web service URL (replace with your actual Render URL)
-WEBHOOK_URL_BASE = os.environ.get('WEBHOOK_URL_BASE') 
+WEBHOOK_URL_BASE = os.getenv("WEBHOOK_URL_BASE")
 
-# 2. Initialize Bot and Flask
-bot = telebot.TeleBot(BOT_TOKEN)
-server = Flask(__name__)
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN is missing!")
+if not WEBHOOK_URL_BASE:
+    raise ValueError("WEBHOOK_URL_BASE is missing!")
 
-# روابط الدفع حسب كل دولة
-PAYMENT_LINKS = {
-    "EG": {    # مصر
-        "individual": "https://secure-egypt.paytabs.com/payment/link/140410/5615069",
-        "family": "https://secure-egypt.paytabs.com/payment/link/140410/5594819"
-    },
-    "SA": {    # السعودية والخليج
-        "individual": "https://secure-egypt.paytabs.com/payment/link/140410/5763844",
-        "family": "https://secure-egypt.paytabs.com/payment/link/140410/5763828"
-    },
-    "DEFAULT": {  # باقي دول العالم
-        "individual": "https://secure-egypt.paytabs.com/payment/link/140410/5763844",
-        "family": "https://secure-egypt.paytabs.com/payment/link/140410/5763828"
-    }
-}
+WEBHOOK_URL = f"{WEBHOOK_URL_BASE}/{BOT_TOKEN}"
 
-# دالة تحديد الدولة تلقائياً
-def detect_country(phone):
-    # Standardize phone by removing leading '+'
-    if phone.startswith("+"):
-        phone = phone[1:] 
+# -------------------------------
+# Initialize Bot and Flask
+# -------------------------------
+bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
+app = Flask(__name__)
 
-    if phone.startswith("20"):
-        return "EG"
-    if phone.startswith("966") or phone.startswith("971") or \
-       phone.startswith("965") or phone.startswith("973") or \
-       phone.startswith("968"):
-        return "SA"
-    return "DEFAULT"
+# -------------------------------
+# In-memory storage for demo purposes (replace with DB in production)
+# -------------------------------
+users_data = {}  # {user_id: {name, country, phone, age, email, plan, medicines: []}}
 
-# --- TELEGRAM HANDLERS (Same Logic) ---
+# -------------------------------
+# Helper Functions
+# -------------------------------
+def main_menu_keyboard():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.row("📝 Add Medicine", "📋 View Medicines")
+    kb.row("🔄 Edit Medicine", "❌ Delete Medicine")
+    kb.row("💰 Choose Plan")
+    return kb
 
-# رسالة البداية
-@bot.message_handler(commands=["start"])
-def start(message):
-    bot.reply_to(message, "مرحباً 👋\nمن فضلك أرسل رقم هاتفك مع كود الدولة.\nمثال:\n+201234567890\n+966512345678")
-
-# استقبال رقم الهاتف
-@bot.message_handler(func=lambda m: True)
-def handle_phone(message):
-    phone = message.text.strip()
-    
-    # Validation check: should start with '+' or a digit
-    if not phone.startswith("+") and not phone[0].isdigit():
-        bot.reply_to(message, "❌ من فضلك أرسل رقم هاتف صحيح (يجب أن يبدأ بعلامة + أو رقم).")
-        return
-
-    country = detect_country(phone)
-    prices = PAYMENT_LINKS.get(country, PAYMENT_LINKS["DEFAULT"])
-
+def payment_buttons_keyboard(country):
+    kb = types.InlineKeyboardMarkup()
     if country == "EG":
-        price_text = "🇪🇬 الأسعار بالجنيه المصري:"
-        ind_price = "97 جنيه"
-        # Note: Corrected the family price for consistency (was 197 in ManyChat blueprint, 190 here)
-        fam_price = "190 جنيه" 
+        kb.add(types.InlineKeyboardButton("خطة فردية - 97 جنيه", url="https://secure-egypt.paytabs.com/payment/link/140410/5615069"))
+        kb.add(types.InlineKeyboardButton("خطة عائلية - 190 جنيه", url="https://secure-egypt.paytabs.com/payment/link/140410/5594819"))
     else:
-        price_text = "🇸🇦 الأسعار بالريال السعودي:"
-        ind_price = "59 ريال"
-        fam_price = "89 ريال"
+        kb.add(types.InlineKeyboardButton("Individual Plan - 59 SAR", url="https://secure-egypt.paytabs.com/payment/link/140410/5763844"))
+        kb.add(types.InlineKeyboardButton("Family Plan - 89 SAR", url="https://secure-egypt.paytabs.com/payment/link/140410/5763828"))
+    return kb
 
-    reply = f"""
-📱 رقمك: {phone}
-🌍 تم التعرف على دولتك: {country}
+# -------------------------------
+# Step Handlers
+# -------------------------------
+@bot.message_handler(commands=['start'])
+def start_cmd(message):
+    user_id = message.from_user.id
+    users_data[user_id] = {"step": "get_name", "medicines": []}
+    bot.send_message(user_id, "مرحباً 👋\nمن فضلك أدخل اسمك الكامل:")
 
-{price_text}
+@bot.message_handler(func=lambda m: m.from_user.id in users_data)
+def user_flow(message):
+    user_id = message.from_user.id
+    user = users_data[user_id]
+    step = user.get("step")
 
-✨ الخطة الفردية – {ind_price}
-رابط الدفع: {prices['individual']}
+    if step == "get_name":
+        user["name"] = message.text.strip()
+        user["step"] = "get_country"
+        bot.send_message(user_id, "اختر دولتك:", reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).row("مصر 🇪🇬", "السعودية 🇸🇦", "أخرى 🌍"))
+    
+    elif step == "get_country":
+        country_text = message.text.strip()
+        if "مصر" in country_text:
+            user["country"] = "EG"
+        elif "سعودية" in country_text:
+            user["country"] = "SA"
+        else:
+            user["country"] = "DEFAULT"
+        user["step"] = "get_phone"
+        bot.send_message(user_id, "أدخل رقم جوالك مع كود الدولة (+20 أو +966 ...):")
+    
+    elif step == "get_phone":
+        phone = message.text.strip()
+        if not phone.startswith("+") and not phone[0].isdigit():
+            bot.send_message(user_id, "❌ من فضلك أرسل رقم هاتف صحيح (يجب أن يبدأ بعلامة + أو رقم).")
+            return
+        user["phone"] = phone
+        user["step"] = "get_age"
+        bot.send_message(user_id, "أدخل عمرك:")
+    
+    elif step == "get_age":
+        if not message.text.isdigit():
+            bot.send_message(user_id, "❌ من فضلك أدخل رقم صحيح للسن.")
+            return
+        user["age"] = int(message.text)
+        user["step"] = "get_email"
+        bot.send_message(user_id, "أدخل بريدك الإلكتروني:")
+    
+    elif step == "get_email":
+        email = message.text.strip()
+        user["email"] = email
+        user["step"] = "choose_plan"
+        bot.send_message(user_id, "شكراً! الآن اختر خطتك:", reply_markup=payment_buttons_keyboard(user["country"]))
+    
+    elif step == "choose_plan":
+        # The plan selection will be done via inline buttons with payment links
+        # After payment, user can start adding medicines
+        user["step"] = "main_menu"
+        bot.send_message(user_id, "بعد الدفع، اضغط على أي زر أدناه للوصول إلى القائمة الرئيسية:", reply_markup=main_menu_keyboard())
+    
+    elif step == "main_menu":
+        text = message.text.strip()
+        if text == "📝 Add Medicine":
+            user["step"] = "adding_medicine"
+            bot.send_message(user_id, "أدخل اسم الدواء الذي تريد إضافته:")
+        elif text == "📋 View Medicines":
+            meds = user["medicines"]
+            if meds:
+                bot.send_message(user_id, "قائمة الأدوية:\n" + "\n".join([f"{i+1}. {m}" for i,m in enumerate(meds)]), reply_markup=main_menu_keyboard())
+            else:
+                bot.send_message(user_id, "لم تقم بإضافة أي دواء بعد.", reply_markup=main_menu_keyboard())
+        elif text == "🔄 Edit Medicine":
+            meds = user["medicines"]
+            if not meds:
+                bot.send_message(user_id, "لا يوجد أدوية لتعديلها.", reply_markup=main_menu_keyboard())
+                return
+            user["step"] = "editing_medicine"
+            bot.send_message(user_id, "أرسل رقم الدواء الذي تريد تعديله:\n" + "\n".join([f"{i+1}. {m}" for i,m in enumerate(meds)]))
+        elif text == "❌ Delete Medicine":
+            meds = user["medicines"]
+            if not meds:
+                bot.send_message(user_id, "لا يوجد أدوية لحذفها.", reply_markup=main_menu_keyboard())
+                return
+            user["step"] = "deleting_medicine"
+            bot.send_message(user_id, "أرسل رقم الدواء الذي تريد حذفه:\n" + "\n".join([f"{i+1}. {m}" for i,m in enumerate(meds)]))
+        elif text == "💰 Choose Plan":
+            bot.send_message(user_id, "اختر خطتك:", reply_markup=payment_buttons_keyboard(user["country"]))
+    
+    elif step == "adding_medicine":
+        med_name = message.text.strip()
+        user["medicines"].append(med_name)
+        user["step"] = "main_menu"
+        bot.send_message(user_id, f"✅ تم إضافة الدواء: {med_name}", reply_markup=main_menu_keyboard())
+    
+    elif step == "editing_medicine":
+        index = message.text.strip()
+        meds = user["medicines"]
+        if not index.isdigit() or int(index) < 1 or int(index) > len(meds):
+            bot.send_message(user_id, "❌ الرقم غير صحيح. حاول مرة أخرى.")
+            return
+        user["edit_index"] = int(index)-1
+        user["step"] = "editing_medicine_name"
+        bot.send_message(user_id, f"أرسل الاسم الجديد للدواء {meds[int(index)-1]}:")
+    
+    elif step == "editing_medicine_name":
+        new_name = message.text.strip()
+        idx = user.pop("edit_index")
+        user["medicines"][idx] = new_name
+        user["step"] = "main_menu"
+        bot.send_message(user_id, f"✅ تم تعديل الدواء إلى: {new_name}", reply_markup=main_menu_keyboard())
+    
+    elif step == "deleting_medicine":
+        index = message.text.strip()
+        meds = user["medicines"]
+        if not index.isdigit() or int(index) < 1 or int(index) > len(meds):
+            bot.send_message(user_id, "❌ الرقم غير صحيح. حاول مرة أخرى.")
+            return
+        deleted = meds.pop(int(index)-1)
+        user["step"] = "main_menu"
+        bot.send_message(user_id, f"❌ تم حذف الدواء: {deleted}", reply_markup=main_menu_keyboard())
 
-👨‍👩‍👧 الخطة العائلية – {fam_price}
-رابط الدفع: {prices['family']}
+# -------------------------------
+# Flask Webhook Routes
+# -------------------------------
+@app.route(f"/{BOT_TOKEN}", methods=['POST'])
+def telegram_webhook():
+    json_str = request.get_data().decode("utf-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "OK", 200
 
-بعد الدفع أرسل لقطة شاشة لتأكيد الاشتراك.
-"""
-    bot.reply_to(message, reply)
-
-# --- WEBHOOK IMPLEMENTATION FOR RENDER ---
-
-@server.route('/' + BOT_TOKEN, methods=['POST'])
-def get_message():
-    """Handles incoming POST request from Telegram."""
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return '!', 200
-    else:
-        return 'Hello from bot', 200 # Should be 403 or similar but 200 prevents retries
-
-@server.route('/')
-def webhook():
-    """Sets the Telegram Webhook URL upon service startup."""
-    # Ensure WEBHOOK_URL_BASE is set in Render environment variables
-    if not WEBHOOK_URL_BASE:
-        return "WEBHOOK_URL_BASE not set. Cannot set webhook.", 500
-
-    webhook_url = f"{WEBHOOK_URL_BASE}/{BOT_TOKEN}"
+@app.route("/", methods=['GET'])
+def index():
     bot.remove_webhook()
-    bot.set_webhook(url=webhook_url)
-    return "Webhook set!", 200
+    bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    return f"Webhook set: {WEBHOOK_URL}/{BOT_TOKEN}", 200
 
-# 3. Start the Flask server
+# -------------------------------
+# Start Server
+# -------------------------------
 if __name__ == "__main__":
-    server.run(host="0.0.0.0", port=PORT)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
