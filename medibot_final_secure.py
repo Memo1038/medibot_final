@@ -1,63 +1,51 @@
-# medibot_final_secure.py - Optimized for Render Webhook Deployment
+# medibot_final_secure.py - Final working version for Render + Telegram Webhook
 
 import os
-from dotenv import load_dotenv  # For local testing
-import telebot  # pyTelegramBotAPI
-from flask import Flask, request  # Webhook server
-from apscheduler.schedulers.background import BackgroundScheduler
-import requests
+import telebot
+from flask import Flask, request
+from dotenv import load_dotenv
 
-# -------------------------------
-# Load Environment Variables
-# -------------------------------
-load_dotenv()  # Only needed for local testing; Render reads from env vars automatically
+# Load env vars (Render reads automatically)
+load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-AZURE_KEY = os.getenv("AZURE_KEY")
-AZURE_REGION = os.getenv("AZURE_REGION")
+WEBHOOK_URL_BASE = os.getenv("WEBHOOK_URL_BASE")
 
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN is not set. Add it to .env or Render Environment Variables.")
+    raise ValueError("BOT_TOKEN is missing!")
 
-# -------------------------------
-# Initialize Telegram Bot
-# -------------------------------
-bot = telebot.TeleBot(BOT_TOKEN)
+if not WEBHOOK_URL_BASE:
+    raise ValueError("WEBHOOK_URL_BASE is missing!")
 
-# -------------------------------
-# Initialize Flask App
-# -------------------------------
+WEBHOOK_URL = f"{WEBHOOK_URL_BASE}/{BOT_TOKEN}"
+
+# Init bot
+bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
+
+# Init Flask app
 app = Flask(__name__)
 
-# -------------------------------
-# Telegram Webhook Endpoint
-# -------------------------------
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    json_data = request.get_json()
-    if json_data:
-        update = telebot.types.Update.de_json(json_data)
-        bot.process_new_updates([update])
+# Main webhook endpoint
+@app.route(f"/{BOT_TOKEN}", methods=['POST'])
+def telegram_webhook():
+    json_str = request.get_data().decode("utf-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
     return "OK", 200
 
-# -------------------------------
-# Example Command Handler
-# -------------------------------
+# Home route: also sets webhook!
+@app.route("/", methods=['GET'])
+def index():
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL)
+    return f"Webhook set: {WEBHOOK_URL}", 200
+
+# Example command
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "Welcome to MediBot! Your medication reminder assistant.")
+def start_cmd(message):
+    bot.reply_to(message, "Welcome from MediBot! Bot is working ✔️")
 
-# -------------------------------
-# Example Background Scheduler (optional)
-# -------------------------------
-scheduler = BackgroundScheduler()
-# Example: run every 10 minutes
-# scheduler.add_job(lambda: print("Background job running..."), 'interval', minutes=10)
-scheduler.start()
-
-# -------------------------------
-# Start Flask Server (Render uses PORT)
-# -------------------------------
+# Start server
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
