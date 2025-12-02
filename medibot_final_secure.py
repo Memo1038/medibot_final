@@ -1,18 +1,28 @@
 # medibot_final_secure.py - Optimized for Render Webhook Deployment
-import telebot
+import telebot # Provides the main Telegram bot API functions
 import os
-from dotenv import load_dotenv
-from flask import Flask, request
+from dotenv import load_dotenv # Used to load .env locally (though Render uses env vars)
+from flask import Flask, request # Used to set up the Webhook server
 
-# 1. Load environment variables
+# --- 1. CONFIGURATION AND INITIALIZATION ---
+
+# Load environment variables (from .env locally, or Render environment remotely)
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-# Render provides the port automatically
-PORT = int(os.environ.get('PORT', 5000)) 
-# Your Render web service URL (replace with your actual Render URL)
-WEBHOOK_URL_BASE = os.environ.get('WEBHOOK_URL_BASE') 
 
-# 2. Initialize Bot and Flask
+# If the bot token is missing, the script shouldn't proceed
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is not set.")
+
+# Render provides the port automatically via the environment
+PORT = int(os.environ.get('PORT', 5000))
+# The base URL of your Render service (e.g., https://medibot-final.onrender.com)
+WEBHOOK_URL_BASE = os.environ.get('WEBHOOK_URL_BASE')
+# The Webhook URL must be secret, using the BOT_TOKEN as the path
+WEBHOOK_URL_PATH = f"/{BOT_TOKEN}"
+
+
+# Initialize Bot and Flask
 bot = telebot.TeleBot(BOT_TOKEN)
 server = Flask(__name__)
 
@@ -32,21 +42,25 @@ PAYMENT_LINKS = {
     }
 }
 
+# --- 2. BOT LOGIC FUNCTIONS ---
+
 # دالة تحديد الدولة تلقائياً
 def detect_country(phone):
     # Standardize phone by removing leading '+'
     if phone.startswith("+"):
-        phone = phone[1:] 
+        phone = phone[1:]
 
+    # Check for Egypt (20)
     if phone.startswith("20"):
         return "EG"
+    # Check for KSA (966), UAE (971), Kuwait (965), Bahrain (973), Oman (968)
     if phone.startswith("966") or phone.startswith("971") or \
        phone.startswith("965") or phone.startswith("973") or \
        phone.startswith("968"):
         return "SA"
     return "DEFAULT"
 
-# --- TELEGRAM HANDLERS (Same Logic) ---
+# --- 3. TELEGRAM HANDLERS ---
 
 # رسالة البداية
 @bot.message_handler(commands=["start"])
@@ -57,7 +71,7 @@ def start(message):
 @bot.message_handler(func=lambda m: True)
 def handle_phone(message):
     phone = message.text.strip()
-    
+
     # Validation check: should start with '+' or a digit
     if not phone.startswith("+") and not phone[0].isdigit():
         bot.reply_to(message, "❌ من فضلك أرسل رقم هاتف صحيح (يجب أن يبدأ بعلامة + أو رقم).")
@@ -69,8 +83,7 @@ def handle_phone(message):
     if country == "EG":
         price_text = "🇪🇬 الأسعار بالجنيه المصري:"
         ind_price = "97 جنيه"
-        # Note: Corrected the family price for consistency (was 197 in ManyChat blueprint, 190 here)
-        fam_price = "190 جنيه" 
+        fam_price = "190 جنيه"
     else:
         price_text = "🇸🇦 الأسعار بالريال السعودي:"
         ind_price = "59 ريال"
@@ -92,31 +105,42 @@ def handle_phone(message):
 """
     bot.reply_to(message, reply)
 
-# --- WEBHOOK IMPLEMENTATION FOR RENDER ---
+# --- 4. WEBHOOK IMPLEMENTATION FOR RENDER (FLASK ROUTES) ---
 
-@server.route('/' + BOT_TOKEN, methods=['POST'])
+@server.route(WEBHOOK_URL_PATH, methods=['POST'])
 def get_message():
     """Handles incoming POST request from Telegram."""
     if request.headers.get('content-type') == 'application/json':
         json_string = request.get_data().decode('utf-8')
         update = telebot.types.Update.de_json(json_string)
+        # Process the update using the bot handler functions defined above
         bot.process_new_updates([update])
         return '!', 200
     else:
-        return 'Hello from bot', 200 # Should be 403 or similar but 200 prevents retries
+        # Deny access if not a JSON payload (i.e., not Telegram)
+        return 'Not Authorized', 403
 
 @server.route('/')
-def webhook():
+def webhook_setup():
     """Sets the Telegram Webhook URL upon service startup."""
     # Ensure WEBHOOK_URL_BASE is set in Render environment variables
     if not WEBHOOK_URL_BASE:
         return "WEBHOOK_URL_BASE not set. Cannot set webhook.", 500
 
-    webhook_url = f"{WEBHOOK_URL_BASE}/{BOT_TOKEN}"
+    webhook_url = f"{WEBHOOK_URL_BASE}{WEBHOOK_URL_PATH}"
+    
+    # 1. Remove any old webhook
     bot.remove_webhook()
-    bot.set_webhook(url=webhook_url)
-    return "Webhook set!", 200
+    
+    # 2. Set the new webhook URL
+    if bot.set_webhook(url=webhook_url):
+        return f"Webhook set to: {webhook_url}", 200
+    else:
+        return "Failed to set webhook.", 500
 
-# 3. Start the Flask server
+
+# --- 5. START THE FLASK SERVER ---
+
 if __name__ == "__main__":
+    # Flask runs on 0.0.0.0 (all interfaces) and uses the port specified by Render
     server.run(host="0.0.0.0", port=PORT)
