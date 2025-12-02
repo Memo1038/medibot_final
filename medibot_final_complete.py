@@ -1,13 +1,11 @@
+# medibot_final_secure.py
 import telebot
 import os
 from dotenv import load_dotenv
-import requests
 
 # تحميل القيم من ملف .env
 load_dotenv()
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-AZURE_KEY = os.getenv("AZURE_KEY")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -21,7 +19,7 @@ PAYMENT_LINKS = {
         "individual": "https://secure-egypt.paytabs.com/payment/link/140410/5763844",
         "family": "https://secure-egypt.paytabs.com/payment/link/140410/5763828"
     },
-    "DEFAULT": {  # باقي دول العالم → نفس أسعار الخليج
+    "DEFAULT": {  # باقي دول العالم
         "individual": "https://secure-egypt.paytabs.com/payment/link/140410/5763844",
         "family": "https://secure-egypt.paytabs.com/payment/link/140410/5763828"
     }
@@ -33,13 +31,13 @@ def detect_country(phone):
         return "EG"
     if phone.startswith("+966") or phone.startswith("966"):
         return "SA"
-    if phone.startswith("+971") or phone.startswith("971"):  # الإمارات
+    if phone.startswith("+971") or phone.startswith("971"):
         return "SA"
-    if phone.startswith("+965") or phone.startswith("965"):  # الكويت
+    if phone.startswith("+965") or phone.startswith("965"):
         return "SA"
-    if phone.startswith("+973") or phone.startswith("973"):  # البحرين
+    if phone.startswith("+973") or phone.startswith("973"):
         return "SA"
-    if phone.startswith("+968") or phone.startswith("968"):  # عمان
+    if phone.startswith("+968") or phone.startswith("968"):
         return "SA"
     return "DEFAULT"
 
@@ -75,17 +73,14 @@ def handle_phone(message):
 
 {price_text}
 
-✨ **الخطة الفردية** – {ind_price}
-رابط الدفع:
-{prices['individual']}
+✨ الخطة الفردية – {ind_price}
+رابط الدفع: {prices['individual']}
 
-👨‍👩‍👧 **الخطة العائلية** – {fam_price}
-رابط الدفع:
-{prices['family']}
+👨‍👩‍👧 الخطة العائلية – {fam_price}
+رابط الدفع: {prices['family']}
 
 بعد الدفع أرسل لقطة شاشة لتأكيد الاشتراك.
 """
-
     bot.reply_to(message, reply)
 
 # تشغيل البوت
