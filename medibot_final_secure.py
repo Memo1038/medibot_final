@@ -1,4 +1,4 @@
-# medibot_final_full.py - Telegram Bot with precise scheduled reminders using APScheduler
+# medibot_render_full.py - Telegram Bot with Webhook + medicine reminders
 
 import os
 import telebot
@@ -64,21 +64,29 @@ def schedule_medicine_reminders(user_id, medicine):
         for t in times:
             hour, minute = map(int, t.split(":"))
             # APScheduler cron job
+            job_id = f"{user_id}_{medicine['name']}_{day}_{t}"
+            try:
+                scheduler.remove_job(job_id)
+            except:
+                pass
             scheduler.add_job(
-                func=lambda uid=user_id, med=medicine: send_reminder(uid, med),
+                func=lambda uid=user_id, med_name=medicine['name'], dosage=medicine['dosage']: send_reminder(uid, med_name, dosage),
                 trigger="cron",
                 day_of_week=day[:3].lower(),  # e.g., 'mon', 'tue'
                 hour=hour,
                 minute=minute,
-                id=f"{user_id}_{medicine['name']}_{day}_{t}",
+                id=job_id,
                 replace_existing=True
             )
 
-def send_reminder(user_id, medicine):
-    bot.send_message(
-        user_id,
-        f"⏰ تذكير بالدواء:\n💊 {medicine['name']}\n📝 الجرعة: {medicine['dosage']}"
-    )
+def send_reminder(user_id, med_name, dosage):
+    try:
+        bot.send_message(
+            user_id,
+            f"⏰ تذكير بالدواء:\n💊 {med_name}\n📝 الجرعة: {dosage}"
+        )
+    except Exception as e:
+        print(f"Error sending reminder: {e}")
 
 def remove_medicine_jobs(user_id, medicine):
     """
