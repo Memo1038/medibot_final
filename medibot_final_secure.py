@@ -1,7 +1,7 @@
-# medibot_render_json_times.py
+# medibot_render_json_times_ar.py
 # Telegram bot (Webhook) + APScheduler + JSON storage
-# Option 1 flow: user chooses how many times per day (1-4), enters HH:MM for each dose,
-# chooses صباحًا/مساءً (or 24h) — bot schedules daily reminders at those times.
+# Arabic-localized version: all fields and UI elements in Arabic,
+# keys for medicines: "اسم", "الجرعة", "الأوقات"
 
 import os
 import json
@@ -43,7 +43,7 @@ scheduler = BackgroundScheduler()
 scheduler.start()
 
 # Data structure loaded from JSON
-# data = { "<user_id>": {name, country, phone, age, email, step, medicines: [ {id,name,dosage,times: ["HH:MM", ...]} ], temp_flow: {...} } }
+# data = { "<user_id>": {name, country, phone, age, email, step, medicines: [ {id,اسم,الجرعة,الأوقات: ["HH:MM", ...]} ], temp_flow: {...} } }
 data = {}
 
 # -----------------------
@@ -78,18 +78,18 @@ def sanitize_job_id(raw: str) -> str:
 
 def schedule_med_jobs(user_id: str, med: dict):
     """
-    Schedule APScheduler cron jobs for each time in med['times'].
+    Schedule APScheduler cron jobs for each time in med['الأوقات'].
     Each job runs daily at specified hour:minute.
     Job id: user__medid__HHMM__idx
     """
     try:
         # remove previous jobs for this med first
         remove_med_jobs(user_id, med)
-        for idx, hhmm in enumerate(med.get("times", [])):
+        for idx, hhmm in enumerate(med.get("الأوقات", [])):
             try:
                 hh, mm = map(int, hhmm.split(":"))
             except Exception:
-                print(f"Invalid time {hhmm} for med {med.get('name')}")
+                print(f"Invalid time {hhmm} for med {med.get('اسم')}")
                 continue
             raw = f"{user_id}__{med['id']}__{hhmm.replace(':','')}__{idx}"
             job_id = sanitize_job_id(raw)
@@ -104,12 +104,12 @@ def schedule_med_jobs(user_id: str, med: dict):
                 replace_existing=True,
                 misfire_grace_time=60
             )
-            print(f"Scheduled job {job_id} for user {user_id} med {med.get('name')} at {hhmm}")
+            print(f"Scheduled job {job_id} for user {user_id} med {med.get('اسم')} at {hhmm}")
     except Exception:
         print("Error scheduling med jobs:", traceback.format_exc())
 
 def remove_med_jobs(user_id: str, med: dict):
-    for idx, hhmm in enumerate(med.get("times", [])):
+    for idx, hhmm in enumerate(med.get("الأوقات", [])):
         raw = f"{user_id}__{med['id']}__{hhmm.replace(':','')}__{idx}"
         job_id = sanitize_job_id(raw)
         try:
@@ -147,19 +147,19 @@ def send_reminder(user_id: int, med_id: str):
         if not med:
             return
         now = datetime.now().strftime("%H:%M")
-        text = f"⏰ تذكير بالدواء:\n💊 {med.get('name')}\n📝 الجرعة: {med.get('dosage')}\n🕒 الوقت: {now}"
+        text = f"⏰ تذكير بالدواء:\n💊 {med.get('اسم')}\n📝 الجرعة: {med.get('الجرعة')}\n🕒 الوقت: {now}"
         bot.send_message(user_id, text)
     except Exception:
         print("Failed to send reminder:", traceback.format_exc())
 
 # -----------------------
-# Keyboards
+# Keyboards (Arabic)
 # -----------------------
 def main_menu_keyboard():
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.row("📝 Add Medicine", "📋 View Medicines")
-    kb.row("🔄 Edit Medicine", "❌ Delete Medicine")
-    kb.row("💰 Choose Plan")
+    kb.row("➕ إضافة دواء", "📋 عرض الأدوية")
+    kb.row("✏️ تعديل دواء", "🗑️ حذف دواء")
+    kb.row("💰 اختيار الخطة")
     return kb
 
 def times_count_keyboard():
@@ -169,7 +169,7 @@ def times_count_keyboard():
 
 def period_keyboard():
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    kb.row("صباحًا", "مساءً", "24 ساعة (لا تحويل)")
+    kb.row("صباحًا", "مساءً")
     return kb
 
 def payment_buttons_keyboard(country):
@@ -178,8 +178,8 @@ def payment_buttons_keyboard(country):
         kb.add(types.InlineKeyboardButton("خطة فردية - 97 جنيه", url="https://secure-egypt.paytabs.com/payment/link/140410/5615069"))
         kb.add(types.InlineKeyboardButton("خطة عائلية - 190 جنيه", url="https://secure-egypt.paytabs.com/payment/link/140410/5594819"))
     else:
-        kb.add(types.InlineKeyboardButton("Individual Plan - 59 SAR", url="https://secure-egypt.paytabs.com/payment/link/140410/5763844"))
-        kb.add(types.InlineKeyboardButton("Family Plan - 89 SAR", url="https://secure-egypt.paytabs.com/payment/link/140410/5763828"))
+        kb.add(types.InlineKeyboardButton("خطة فردية - 59 SAR", url="https://secure-egypt.paytabs.com/payment/link/140410/5763844"))
+        kb.add(types.InlineKeyboardButton("خطة عائلية - 89 SAR", url="https://secure-egypt.paytabs.com/payment/link/140410/5763828"))
     return kb
 
 # -----------------------
@@ -259,66 +259,66 @@ def user_flow(message):
 
     # Main menu
     if step == "main_menu":
-        if text == "📝 Add Medicine":
+        if text == "➕ إضافة دواء":
             u["step"] = "adding_medicine_name"
             save_data()
             bot.send_message(message.chat.id, "أدخل اسم الدواء الذي تريد إضافته:")
             return
-        if text == "📋 View Medicines":
+        if text == "📋 عرض الأدوية":
             meds = u.get("medicines", [])
             if not meds:
                 bot.send_message(message.chat.id, "لم تقم بإضافة أي دواء بعد.", reply_markup=main_menu_keyboard())
                 return
             lines = []
             for i, m in enumerate(meds, start=1):
-                times_text = ", ".join(m.get("times", [])) if m.get("times") else "لم يتم تحديد أوقات"
-                lines.append(f"{i}. {m.get('name')} — {m.get('dosage')}\nالأوقات: {times_text}")
+                times_text = ", ".join(m.get("الأوقات", [])) if m.get("الأوقات") else "لم يتم تحديد أوقات"
+                lines.append(f"{i}. {m.get('اسم')} — {m.get('الجرعة')}\nالأوقات: {times_text}")
             bot.send_message(message.chat.id, "قائمة الأدوية:\n\n" + "\n\n".join(lines), reply_markup=main_menu_keyboard())
             return
-        if text == "🔄 Edit Medicine":
+        if text == "✏️ تعديل دواء":
             meds = u.get("medicines", [])
             if not meds:
                 bot.send_message(message.chat.id, "لا يوجد أدوية لتعديلها.", reply_markup=main_menu_keyboard())
                 return
             u["step"] = "editing_medicine"
             save_data()
-            lines = [f"{i+1}. {m['name']}" for i, m in enumerate(meds)]
+            lines = [f"{i+1}. {m['اسم']}" for i, m in enumerate(meds)]
             bot.send_message(message.chat.id, "أرسل رقم الدواء الذي تريد تعديله:\n" + "\n".join(lines))
             return
-        if text == "❌ Delete Medicine":
+        if text == "🗑️ حذف دواء":
             meds = u.get("medicines", [])
             if not meds:
                 bot.send_message(message.chat.id, "لا يوجد أدوية لحذفها.", reply_markup=main_menu_keyboard())
                 return
             u["step"] = "deleting_medicine"
             save_data()
-            lines = [f"{i+1}. {m['name']}" for i, m in enumerate(meds)]
+            lines = [f"{i+1}. {m['اسم']}" for i, m in enumerate(meds)]
             bot.send_message(message.chat.id, "أرسل رقم الدواء الذي تريد حذفه:\n" + "\n".join(lines))
             return
-        if text == "💰 Choose Plan":
+        if text == "💰 اختيار الخطة":
             bot.send_message(message.chat.id, "اختر خطتك:", reply_markup=payment_buttons_keyboard(u.get("country","DEFAULT")))
             return
         # Unknown input -> show menu
         bot.send_message(message.chat.id, "اختر من القائمة:", reply_markup=main_menu_keyboard())
         return
 
-    # Add medicine flow (Option 1 style)
+    # Add medicine flow (Arabic fields)
     if step == "adding_medicine_name":
         med_name = text
         u["temp_med"] = {
             "id": f"med{int(datetime.utcnow().timestamp() * 1000)}",
-            "name": med_name,
-            "dosage": "",
-            "times": []
+            "اسم": med_name,
+            "الجرعة": "",
+            "الأوقات": []
         }
         u["step"] = "adding_medicine_dosage"
         save_data()
-        bot.send_message(message.chat.id, f"أدخل جرعة الدواء {med_name} (مثال: 1 قرص / 5 مل):")
+        bot.send_message(message.chat.id, f"أدخل الجرعة للدواء '{med_name}' (مثال: 1 قرص / 5 مل):")
         return
 
     if step == "adding_medicine_dosage":
         dosage = text
-        u["temp_med"]["dosage"] = dosage
+        u["temp_med"]["الجرعة"] = dosage
         u["step"] = "adding_medicine_times_count"
         save_data()
         bot.send_message(message.chat.id, "كم مرة يوميًا تأخذ هذا الدواء؟ اختر 1 إلى 4:", reply_markup=times_count_keyboard())
@@ -346,7 +346,7 @@ def user_flow(message):
             bot.send_message(message.chat.id, "صيغة وقت خاطئة. استخدم HH:MM مثل 08:30")
             return
         # save raw and ask for period choice to convert if user entered 12-hour format
-        u["temp_med"].setdefault("current_time_candidate", {}) 
+        u["temp_med"].setdefault("current_time_candidate", {})
         u["temp_med"]["current_time_candidate"]["hhmm"] = text
         u["step"] = "adding_medicine_time_period"
         save_data()
@@ -371,23 +371,17 @@ def user_flow(message):
 
         # Convert based on period selection:
         if period == "صباحًا":
-            # if user entered 12 -> treat as 00? We assume input like 1..12; keep as is unless 12 -> 0
             if hh == 12:
                 hh = 0
         elif period == "مساءً":
             if hh < 12:
                 hh = hh + 12
-        elif period == "24 ساعة (لا تحويل)":
-            # user meant 24h format, keep hh/mm as is
-            pass
         else:
-            # invalid option
-            bot.send_message(message.chat.id, "اختيار غير صالح. اختر صباحًا أو مساءً أو 24 ساعة.")
+            bot.send_message(message.chat.id, "اختيار غير صالح. اختر صباحًا أو مساءً.")
             return
 
         hhmm24 = f"{hh:02d}:{mm:02d}"
-        # append to times
-        u["temp_med"].setdefault("times", []).append(hhmm24)
+        u["temp_med"].setdefault("الأوقات", []).append(hhmm24)
         u["temp_med"]["times_collected"] = u["temp_med"].get("times_collected", 0) + 1
         collected = u["temp_med"]["times_collected"]
         needed = u["temp_med"]["times_needed"]
@@ -404,9 +398,9 @@ def user_flow(message):
             # finalize med
             med = {
                 "id": u["temp_med"]["id"],
-                "name": u["temp_med"]["name"],
-                "dosage": u["temp_med"]["dosage"],
-                "times": u["temp_med"].get("times", [])
+                "اسم": u["temp_med"]["اسم"],
+                "الجرعة": u["temp_med"]["الجرعة"],
+                "الأوقات": u["temp_med"].get("الأوقات", [])
             }
             u.setdefault("medicines", []).append(med)
             # schedule jobs
@@ -431,26 +425,33 @@ def user_flow(message):
         u["edit_index"] = idx
         u["step"] = "editing_medicine_field"
         save_data()
-        bot.send_message(message.chat.id, "ماذا تريد تعديل؟ اكتب: name / dosage / times")
+        bot.send_message(message.chat.id, "ماذا تريد تعديل؟ اكتب: الاسم / الجرعة / الأوقات")
         return
 
     if step == "editing_medicine_field":
-        field = text.lower()
-        if field not in {"name","dosage","times"}:
-            bot.send_message(message.chat.id, "خيار غير صحيح. اكتب: name / dosage / times")
+        field = text.strip().lower()
+        # normalize Arabic inputs
+        if field in {"الاسم", "اسم"}:
+            chosen = "اسم"
+        elif field in {"الجرعة", "جرعة"}:
+            chosen = "الجرعة"
+        elif field in {"الأوقات", "اوقات", "الأوقات " ,"أوقات"}:
+            chosen = "الأوقات"
+        else:
+            bot.send_message(message.chat.id, "خيار غير صحيح. اكتب: الاسم / الجرعة / الأوقات")
             return
-        u["edit_field"] = field
-        if field == "name":
+        u["edit_field"] = chosen
+        if chosen == "اسم":
             u["step"] = "editing_medicine_name"
             save_data()
             bot.send_message(message.chat.id, "أدخل الاسم الجديد للدواء:")
             return
-        if field == "dosage":
+        if chosen == "الجرعة":
             u["step"] = "editing_medicine_dosage"
             save_data()
             bot.send_message(message.chat.id, "أدخل الجرعة الجديدة للدواء:")
             return
-        if field == "times":
+        if chosen == "الأوقات":
             # ask how many times now (similar to add flow)
             u["step"] = "editing_medicine_times_count"
             save_data()
@@ -461,7 +462,7 @@ def user_flow(message):
         new_name = text
         idx = u.pop("edit_index")
         med = u["medicines"][idx]
-        med["name"] = new_name
+        med["اسم"] = new_name
         save_data()
         u["step"] = "main_menu"
         bot.send_message(message.chat.id, f"✅ تم تعديل الاسم إلى: {new_name}", reply_markup=main_menu_keyboard())
@@ -471,7 +472,7 @@ def user_flow(message):
         new_dosage = text
         idx = u.pop("edit_index")
         med = u["medicines"][idx]
-        med["dosage"] = new_dosage
+        med["الجرعة"] = new_dosage
         save_data()
         u["step"] = "main_menu"
         bot.send_message(message.chat.id, f"✅ تم تعديل الجرعة إلى: {new_dosage}", reply_markup=main_menu_keyboard())
@@ -486,7 +487,7 @@ def user_flow(message):
         u["temp_edit"] = {
             "times_needed": count,
             "times_collected": 0,
-            "times": []
+            "الأوقات": []
         }
         u["step"] = "editing_medicine_time_input"
         save_data()
@@ -523,13 +524,11 @@ def user_flow(message):
         elif period == "مساءً":
             if hh < 12:
                 hh += 12
-        elif period == "24 ساعة (لا تحويل)":
-            pass
         else:
-            bot.send_message(message.chat.id, "اختيار غير صالح.")
+            bot.send_message(message.chat.id, "اختيار غير صالح. اختر صباحًا أو مساءً.")
             return
         hhmm24 = f"{hh:02d}:{mm:02d}"
-        u["temp_edit"].setdefault("times", []).append(hhmm24)
+        u["temp_edit"].setdefault("الأوقات", []).append(hhmm24)
         u["temp_edit"]["times_collected"] = u["temp_edit"].get("times_collected",0) + 1
         collected = u["temp_edit"]["times_collected"]
         needed = u["temp_edit"]["times_needed"]
@@ -546,7 +545,7 @@ def user_flow(message):
             med = u["medicines"][idx]
             # remove existing jobs
             remove_med_jobs(uid, med)
-            med["times"] = u["temp_edit"].get("times", [])
+            med["الأوقات"] = u["temp_edit"].get("الأوقات", [])
             # schedule new
             schedule_med_jobs(uid, med)
             u.pop("temp_edit", None)
@@ -569,7 +568,7 @@ def user_flow(message):
         remove_med_jobs(uid, med)
         save_data()
         u["step"] = "main_menu"
-        bot.send_message(message.chat.id, f"✅ تم حذف الدواء: {med.get('name')}", reply_markup=main_menu_keyboard())
+        bot.send_message(message.chat.id, f"✅ تم حذف الدواء: {med.get('اسم')}", reply_markup=main_menu_keyboard())
         return
 
     # Fallback: reset to main menu
